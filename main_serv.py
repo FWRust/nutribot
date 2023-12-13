@@ -71,19 +71,19 @@ def show_results(message, hypothyroidism, insulinresistance, irondeficit, specif
             bot.send_document(message.chat.id, open(r"Йод.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Селен.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Жиры.pdf", 'rb'), reply_markup=markup)
-            f.write(f"{user_id}, {1}, {33}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {1}\n")
+            f.write(f"{user_id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {1}\n")
         elif irondeficit > insulinresistance or irondeficit >= hypothyroidism:
             bot.send_document(message.chat.id, open(r"Цинк.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Хром.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Магний.pdf", 'rb'), reply_markup=markup)
-            f.write(f"{user_id}, {1}, {33}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {2}\n")
+            f.write(f"{user_id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {2}\n")
         elif irondeficit == insulinresistance or insulinresistance > irondeficit or insulinresistance >= hypothyroidism:
             bot.send_document(message.chat.id, open(r"Кобаламин (B12).pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Фолиевая кислота.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Медь.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Витамин C.pdf", 'rb'))
             bot.send_document(message.chat.id, open(r"Железо.pdf", 'rb'), reply_markup = markup)
-            f.write(f"{user_id}, {1}, {33}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {3}\n")
+            f.write(f"{user_id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {3}\n")
 
 
 # Получаем информацию о результатах опроса конкретного пользователя
@@ -152,7 +152,7 @@ vitamineC = open(r'Витамин C.pdf', 'rb')
 #file_id = find_file()
 db = open(r'user_data.csv', 'rb')
 
-
+MAX_QUESTIONS = 33
 token = '6330602631:AAGD-y1wboKQSXOkyJUWlV7UVXmNRVgPN90'
 bot = telebot.TeleBot(token)
 @bot.message_handler(content_types=['text', 'audio', 'document', 'animation', 'game', 'photo', 'sticker', 'video', 'video_note', 'voice', 'location', 'contact', 'venue', 'dice', 'new_chat_members', 'left_chat_member', 'new_chat_title',
@@ -332,6 +332,13 @@ def get_analysis(message):
     bot.register_next_step_handler(message, get_analysis)
 
 def process_analysis(message, results_to_compare):
+  specific_id, db = get_user_id_in_base(message.from_user.id)
+  hypothyroidism, insulinresistance, irondeficit = get_data(message.from_user.id, db, specific_id)
+  db = db.drop(db.index[specific_id])
+  db.to_csv("user_data.csv", index=False)
+  with open('user_data.csv', 'a') as f:
+    f.write(f"{message.from_user.id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {0}, {message.text}\n")
+    db = pd.read_csv('user_data.csv')
   result_base = pd.read_excel("Показания.xlsx")
   main_analysis = {}
   for i in range(results_to_compare.count()[0]):
