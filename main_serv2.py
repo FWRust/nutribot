@@ -45,14 +45,14 @@ torch.cuda.is_available()
 
 print(torch.cuda.is_available())
 base_model_name = "TheBloke/Llama-2-13B-chat-GPTQ"
-#adapter_model = '/home/ubuntu/model'
+adapter_model = '/home/ubuntu/model'
 
 print('model init start')
 model = AutoModelForCausalLM.from_pretrained(base_model_name,
                                               device_map={"": 0},
                                               revision = 'gptq-4bit-32g-actorder_True',
                                               quantization_config=GPTQConfig(bits=4,use_exllama=True))
-#model = PeftModel.from_pretrained(model, adapter_model)
+model = PeftModel.from_pretrained(model, adapter_model)
 print('tokenizer init start')
 tokenizer = AutoTokenizer.from_pretrained(base_model_name)
 
