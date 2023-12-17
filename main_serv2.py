@@ -1,4 +1,4 @@
-
+import os
 import asyncio
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.dispatcher import FSMContext
@@ -8,10 +8,6 @@ import numpy as np
 import torch
 import nest_asyncio
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
-from google.colab import auth
-from oauth2client.client import GoogleCredentials
 from peft import PeftConfig, PeftModel
 from transformers import (
      AutoModelForCausalLM,
@@ -19,15 +15,8 @@ from transformers import (
      pipeline,
      GPTQConfig
  )
-from google.colab import drive
 from googletrans import Translator
 nest_asyncio.apply()
-drive.mount('/content/drive')
-auth.authenticate_user()
-gauth = GoogleAuth()
-gauth.credentials = GoogleCredentials.get_application_default()
-drive = GoogleDrive(gauth)
-drive = GoogleDrive(gauth)
 storage = MemoryStorage()
 class UserStates(StatesGroup):
   start_bot = State()
@@ -54,20 +43,23 @@ torch.cuda.is_available()
 # По умолчанию модель занимает не более 10 ГБ VRAM, если занято больше значит вы что то делаете не так
 #####################################################################################################################
 
+print(torch.cuda.is_available())
 base_model_name = "TheBloke/Llama-2-13B-chat-GPTQ"
-adapter_model = '/home/ubuntu/model'
+#adapter_model = '/home/ubuntu/model'
 
+print('model init start')
 model = AutoModelForCausalLM.from_pretrained(base_model_name,
                                               device_map={"": 0},
-                                              quantization_config=GPTQConfig(bits=4,disable_exllama=True))
-model = PeftModel.from_pretrained(model, adapter_model)
-
+                                              revision = 'gptq-4bit-32g-actorder_True',
+                                              quantization_config=GPTQConfig(bits=4,use_exllama=True))
+#model = PeftModel.from_pretrained(model, adapter_model)
+print('tokenizer init start')
 tokenizer = AutoTokenizer.from_pretrained(base_model_name)
 
 ### Параметры модели ###
 
 pipe = pipeline('text-generation',model=model,tokenizer=tokenizer,
-                 max_new_tokens=100, # Максимальная длина ответа, сильное снижение может привести к обрезанию ответов
+                 max_new_tokens=300, # Максимальная длина ответа, сильное снижение может привести к обрезанию ответов
                  do_sample=True,   # не трогать
                  temperature=0.1,  # рандомность ответа, чем больше это число тем более неожиданные и креативные ответы будет давать модель, если число маленькое то ответы будут однообразными но уверенными.
                  top_p=0.95, #  тоже рандомность, чем меньше тем больше модель будет отходить от контекста.
@@ -76,9 +68,9 @@ pipe = pipeline('text-generation',model=model,tokenizer=tokenizer,
                 )
 
 # # ### Системный промпт, в нем вы обьясняете боту кто он по жизни и в чем его цель, что ему стоит делать а что нет, можно свободно изменять.
-system_prompt = "You are a helpful, respectful and honest assistant, you answer questions regarding food supplements and vitamins. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information. Answer the topic of the question, do not deviate from the topic of the question, do not philosophize, be precise and concise, use less than 150 words. Don't use any diagnoses or statistics in your answer. Use as few medical terms as possible. Do not ask questions back. Do not advise any vitamins."
+system_prompt = "You are helpful assistant-nutritionist that answers patient's questions. Answer as short as possible."
 
-
+print('model init done')
 
 #конец нейронки
 
@@ -133,7 +125,7 @@ chrome = open(r'Хром.pdf', 'rb')
 
 acid = open(r'Фолиевая кислота.pdf', 'rb')
 
-test_results = open(r"Показания.xlsx", 'rb')
+test_results = open(r"xlsx/Показания.xlsx", 'rb')
 
 selen = open(r'Селен.pdf', 'rb')
 
@@ -196,7 +188,7 @@ async def sample(message):
                          " с решением возможных проблем со здоровьем путём применения"
                          " <b>БАДов и витаминов</b>. Приступим к работе?", parse_mode="html", reply_markup=markup)
         await UserStates.start_bot.set()
-    else await bot.send_message(message.chat.id,"Пожалуйста, отвечайте корректно. Используйте кнопки, предложенные под полем для ответа.")
+    else: await bot.send_message(message.chat.id,"Пожалуйста, отвечайте корректно. Используйте кнопки, предложенные под полем для ответа.")
 
 
 
@@ -308,9 +300,7 @@ async def show_results(message: types.Message, hypothyroidism: int, insulinresis
         await bot.send_message(message.chat.id, "Вы можете сдать следующие анализы(даны в табличке ниже), чтобы быть уверенными, что никаких проблем у Вас нет."
                                               "Результаты анализов впишите в данную табличку и отправьте боту")
         await print_instructions(message)
-        hypo = drive.CreateFile({'id': '1vGqPSv5AExcS3yvR0gC7KQ9_fvHMcS9e'})
-        hypo.GetContentFile('Анализы3.xlsx')
-        await bot.send_document(message.chat.id, open('Анализы3.xlsx', 'rb'))
+        await bot.send_document(message.chat.id, open('xlsx/analysis3.xlsx', 'rb'))
         await UserStates.to_analysis.set()
       #  dp.message.register(get_analysis, UserState to_analysis)
     else:
@@ -369,25 +359,19 @@ async def start_after_analysis(message: types.Message, state: FSMContext):
       await bot.send_message(message.chat.id, "В данной ниже таблице вместо нулей заполните Ваши результаты анализов."
                        "Удостоверьтесь, что Ферритин, ТТГ и инсулин заполнены!")
       if table_num == 1:
-        hypo = drive.CreateFile({'id': '1vGqPSv5AExcS3yvR0gC7KQ9_fvHMcS9e'})
-        hypo.GetContentFile('Анализы3.xlsx')
-        await bot.send_document(message.chat.id, open('Анализы3.xlsx', 'rb'))
+        await bot.send_document(message.chat.id, open('xlsx/analysis3.xlsx', 'rb'))
         await UserStates.to_analysis.set()
       elif table_num == 2:
-        inresist = drive.CreateFile({'id': '1YN07Hl4jUtQj5r07_1ak7xiXkWX1AN22'})
-        inresist.GetContentFile('Анализы1.xlsx')
-        await bot.send_document(message.chat.id, open('Анализы1.xlsx', 'rb'))
+        await bot.send_document(message.chat.id, open('xlsx/analysis1.xlsx', 'rb'))
         await UserStates.to_analysis.set()
       else:
-        irondef = drive.CreateFile({'id': '17UXKuhm_gkyF2tixi8SGea7S4Rhsz0mz'})
-        irondef.GetContentFile('Анализы2.xlsx')
-        await bot.send_document(message.chat.id, open('Анализы2.xlsx', 'rb'))
+        await bot.send_document(message.chat.id, open('xlsx/analysis2.xlsx', 'rb'))
         await UserStates.to_analysis.set()
 
     else:
       await bot.send_message(message.chat.id, "Пожалуйста, отвечайте корректно. Используйте кнопки, предложенные под полем для ответа.")
 # Получаем анализы от пользователя
-@dp.message_handler(content_types=['document'], state=UserStates.to_analysis)
+@dp.message_handler(content_types=types.ContentType.ANY, state=UserStates.to_analysis)
 async def get_analysis(message: types.Message, state: FSMContext):
   try:
     file_name = message.document.file_name
@@ -405,75 +389,72 @@ async def get_analysis(message: types.Message, state: FSMContext):
     await UserStates.to_process_analysis.set()#Поменять это и все остальные next_step_handler
 
   except Exception:
-    await bot.reply_to(message, "Упс, произошла ошибка, попробуйте еще раз!")
+    await bot.send_message(message.chat.id, "Упс, произошла ошибка, попробуйте еще раз!")
     await UserStates.to_analysis.set()#Поменять это и все остальные next_step_handler
 
 @dp.message_handler(state=UserStates.to_process_analysis)
 async def process_analysis(message: types.Message, state: FSMContext):
-  print(message.from_user.id)
-  specific_id, db = await get_user_id_in_base(message.from_user.id)
-  print(specific_id)
-  hypothyroidism, insulinresistance, irondeficit = await get_user_data(message.from_user.id, db, specific_id)
-  db = db.drop(db.index[specific_id])
-  db.to_csv("user_data.csv", index=False)
-  async with state.proxy() as data:
-    file_name=data['table']
-  results_to_compare = pd.DataFrame(pd.read_excel(file_name))
-  with open('user_data.csv', 'a') as f:
-    f.write(f"{message.from_user.id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {0}, {message.text}\n")
-    db = pd.read_csv('user_data.csv')
-  main_analysis = {}
-  for i in range(results_to_compare.count()[0]):
-    row = list(results_to_compare.loc[i])
-    if row[1] != 0 and not(pd.isnull(row[1])):
-      if row[0] == "Инсулин" or row[0] == "ТТГ" or row[0] == "Ферритин":
-        if row[1].is_integer() or isinstance(row[1], np.floating):
-          main_analysis[row[0]] = row[1]
-
-
-  # Саша, здесь есть повторяющиеся строки. Если у тебя есть идея, как от них избавиться, то давай :))) /// в ф-ию var_sender вынес все эти операции (она выше в комменнтариях).
-  if ("Инсулин" not in main_analysis) or ("Ферритин" not in main_analysis) or ("ТТГ" not in main_analysis):
-    await bot.send_message(message.chat.id, "Вы ввели некорректные данные в таблице, попробуйте еще раз!"
-                     "Удостоверьтесь, что Ферритин, ТТГ и инсулин заполнены!")
+  print(message.text)
+  if message.text != "Мужчина" and message.text != "Женщина":
+    await bot.send_message(message.chat.id, "Некорректный пол.  Отправьте заново таблицу.")
     await UserStates.to_analysis.set()
-  elif 50 <= main_analysis["Ферритин"] <= 150 and 2 <= main_analysis["Инсулин"] <= 6 and 0.4 <= float(main_analysis["ТТГ"]) <= 2.0:
-    fourthvar = drive.CreateFile({'id': '1qmJapfl1Cx2G6RTAzEvCgCz047gEr8Dr'})
-    fourthvar.GetContentFile('Вариант4.pdf')
-    await bot.send_document(message.chat.id, open(r"Вариант4.pdf", 'rb'))
-    await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
-    "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
-    await UserStates.to_AI.set()
   else:
-    if main_analysis["Ферритин"] <= main_analysis["Инсулин"] or main_analysis["Инсулин"] >= main_analysis["ТТГ"]:
-      firstvar = drive.CreateFile({'id': '1t1yqo_6RSeE7Jp1DB11sd_2cCTsTj9_I'})    # замена на var_sender(message.chat.id, 1)
-      firstvar.GetContentFile('Вариант1.pdf')
-      await bot.send_document(message.chat.id, open(r"Вариант1.pdf", 'rb'))
-      await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
-    "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
-      await UserStates.to_AI.set()
-    elif  main_analysis["Ферритин"] >= main_analysis["ТТГ"] or main_analysis["Ферритин"] > main_analysis["Инсулин"]:
-      secondvar = drive.CreateFile({'id': '15ULzx1xnjvafKmuR0wsLeQwHxAteVn9Z'})    # замена на var_sender(message.chat.id, 2)
-      secondvar.GetContentFile('Вариант2.pdf')
-      await bot.send_document(message.chat.id, open(r"Вариант2.pdf", 'rb'))
-      await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
-    "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
-      await UserStates.to_AI.set()
-    else:
-      thirdvar = drive.CreateFile({'id': '1mkr7plbpyImrEtVrgaZtuwebi_xKFxrU'})    # замена на var_sender(message.chat.id, 3)
-      thirdvar.GetContentFile('Вариант3.pdf')
-      await bot.send_document(message.chat.id, open(r"Вариант3.pdf", 'rb'))
-      await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
-    "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
-      await UserStates.to_AI.set()
+      print(message.from_user.id)
+      specific_id, db = await get_user_id_in_base(message.from_user.id)
+      print(specific_id)
+      hypothyroidism, insulinresistance, irondeficit = await get_user_data(message.from_user.id, db, specific_id)
+      db = db.drop(db.index[specific_id])
+      db.to_csv("user_data.csv", index=False)
+      async with state.proxy() as data:
+        file_name=data['table']
+      results_to_compare = pd.DataFrame(pd.read_excel(file_name))
+      with open('user_data.csv', 'a') as f:
+        f.write(f"{message.from_user.id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {0}, {message.text}\n")
+        db = pd.read_csv('user_data.csv')
+        os.remove(file_name)
+      main_analysis = {}
+      for i in range(results_to_compare.count()[0]):
+        row = list(results_to_compare.loc[i])
+        if row[1] != 0 and not(pd.isnull(row[1])):
+          if row[0] == "Инсулин" or row[0] == "ТТГ" or row[0] == "Ферритин":
+            if row[1].is_integer() or isinstance(row[1], np.floating):
+              main_analysis[row[0]] = row[1]
+
+
+      # Саша, здесь есть повторяющиеся строки. Если у тебя есть идея, как от них избавиться, то давай :))) /// в ф-ию var_sender вынес все эти операции (она выше в комменнтариях).
+      if ("Инсулин" not in main_analysis) or ("Ферритин" not in main_analysis) or ("ТТГ" not in main_analysis):
+        await bot.send_message(message.chat.id, "Вы ввели некорректные данные в таблице, попробуйте еще раз!"
+                         "Удостоверьтесь, что Ферритин, ТТГ и инсулин заполнены!")
+        await UserStates.to_analysis.set()
+      elif 50 <= main_analysis["Ферритин"] <= 150 and 2 <= main_analysis["Инсулин"] <= 6 and 0.4 <= float(main_analysis["ТТГ"]) <= 2.0:
+        await bot.send_document(message.chat.id, open(r"Вариант4.pdf", 'rb'))
+        await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
+        "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
+        await UserStates.to_AI.set()
+      else:
+        if main_analysis["Ферритин"] <= main_analysis["Инсулин"] or main_analysis["Инсулин"] >= main_analysis["ТТГ"]:
+          await bot.send_document(message.chat.id, open(r"Вариант1.pdf", 'rb'))
+          await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
+        "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
+          await UserStates.to_AI.set()
+        elif  main_analysis["Ферритин"] >= main_analysis["ТТГ"] or main_analysis["Ферритин"] > main_analysis["Инсулин"]:
+          await bot.send_document(message.chat.id, open(r"Вариант2.pdf", 'rb'))
+          await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
+        "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
+          await UserStates.to_AI.set()
+        else:
+          await bot.send_document(message.chat.id, open(r"Вариант3.pdf", 'rb'))
+          await bot.send_message(message.chat.id, "Если у вас остались вопросы, можете задать их в свободной форме ниже, на них Вам ответит искусственный интеллект[beta].\n"
+        "Начинайте спрашивать прямо сейчас. Если у Вас нет вопросов или Вы захотите остановиться, напишите СТОП.")
+          await UserStates.to_AI.set()
 
 @dp.message_handler(state=UserStates.to_AI)
 async def ask_model(user_prompt: str, state: FSMContext):
   message = user_prompt
   if user_prompt.text.lower() != 'стоп':
+    await bot.send_message(message.chat.id, 'Бот думает, подождите...')
     user_prompt = translator.translate(user_prompt.text).text
-    output = pipe(f'''[INST] <<SYS>>
-    {system_prompt}<</SYS>>
-    {user_prompt}[/INST]''', return_full_text = False)[0]['generated_text']
+    output = pipe(f'''[INST] <<SYS>>{system_prompt}<</SYS>>{user_prompt}[/INST]''', return_full_text = False)[0]['generated_text']
     translated_output = translator.translate(output, src="en", dest="ru")
     await bot.send_message(message.chat.id, translated_output.text)
     await UserStates.to_AI.set()
