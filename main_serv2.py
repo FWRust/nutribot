@@ -408,7 +408,11 @@ async def process_analysis(message: types.Message, state: FSMContext):
         file_name=data['table']
       results_to_compare = pd.DataFrame(pd.read_excel(file_name))
       with open('user_data.csv', 'a') as f:
-        f.write(f"{message.from_user.id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {0}, {message.text}\n")
+        if message.text == "Мужчина":
+          sex = 'Man'
+        else:
+          sex = 'Woman'
+        f.write(f"{message.from_user.id}, {1}, {MAX_QUESTIONS}, {hypothyroidism}, {insulinresistance}, {irondeficit}, {0}, {sex}\n")
         db = pd.read_csv('user_data.csv')
         os.remove(file_name)
       main_analysis = {}
